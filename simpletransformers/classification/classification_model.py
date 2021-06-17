@@ -148,6 +148,7 @@ class ClassificationModel:
         use_cuda=True,
         cuda_device=-1,
         onnx_execution_provider=None,
+        use_mixup=True,
         **kwargs,
     ):
 
@@ -355,8 +356,8 @@ class ClassificationModel:
             warnings.warn("wandb_project specified but wandb is not available. Wandb disabled.")
             self.args.wandb_project = None
 
-        self.use_mixup = True
-        if "use_mixup" in kwargs and "use_mixup" == True:
+        self.use_mixup = False
+        if use_mixup is True:
             self.use_mixup = True
 
     def train_model(
@@ -704,7 +705,7 @@ class ClassificationModel:
                     continue
                 
                 # logger.critical(f'batch is: {batch}')
-                inputs = self._get_inputs_dict(batch, processed_df=processed_df[count * len(batch): (count+1) * len(batch)], base_lang=lang)
+                inputs = self._get_inputs_dict(batch, processed_df=processed_df[count * len(batch): (count+1) * len(batch)], base_lang=lang, use_mixup=self.use_mixup)
                 count += 1
                 if self.args.fp16:
                     with amp.autocast():
@@ -1079,7 +1080,7 @@ class ClassificationModel:
             # batch = tuple(t.to(device) for t in batch)
 
             with torch.no_grad():
-                inputs = self._get_inputs_dict(batch, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang)
+                inputs = self._get_inputs_dict(batch, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang, use_mixup=False)
                 count += 1
 
                 if self.args.fp16:
@@ -1482,7 +1483,7 @@ class ClassificationModel:
                 for i, batch in enumerate(tqdm(eval_dataloader, disable=args.silent, desc="Running Prediction")):
                     # batch = tuple(t.to(self.device) for t in batch)
                     with torch.no_grad():
-                        inputs = self._get_inputs_dict(batch, no_hf=True, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang)
+                        inputs = self._get_inputs_dict(batch, no_hf=True, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang, use_mixup=False)
                         count += 1
 
                         if self.args.fp16:
@@ -1529,7 +1530,7 @@ class ClassificationModel:
                     # batch = tuple(t.to(device) for t in batch)
 
                     with torch.no_grad():
-                        inputs = self._get_inputs_dict(batch, no_hf=True, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang)
+                        inputs = self._get_inputs_dict(batch, no_hf=True, processed_df=processed_df[count * len(batch) : (count+1) * len(batch)], base_lang=lang, use_mixup=False)
                         count += 1
                         if self.args.fp16:
                             with amp.autocast():
@@ -1652,20 +1653,15 @@ class ClassificationModel:
     def _move_model_to_device(self):
         self.model.to(self.device)
 
-    def _get_inputs_dict(self, batch, no_hf=False, processed_df=None, base_lang=None):
+    def _get_inputs_dict(self, batch, no_hf=False, processed_df=None, base_lang=None, use_mixup=False):
         if self.args.use_hf_datasets and not no_hf:
             return {key: value.to(self.device) for key, value in batch.items()}
         if isinstance(batch[0], dict):
             inputs = {key: value.squeeze(1).to(self.device) for key, value in batch[0].items()}
             inputs["labels"] = batch[1].to(self.device)
 
-            if self.use_mixup:
-                # logger.critical('using mixup')
-                
-                # logger.critical("before")
-                # logger.critical(f'{inputs["input_ids"].type()} {inputs["input_ids"].size()}')
-                # logger.critical(f'{inputs["labels"].type()} {inputs["labels"].size()}')
-                # logger.critical(f'{inputs["attention_mask"].type()} {inputs["attention_mask"].size()}')
+            if use_mixup:
+                logger.info('using mixup')
 
                 mixup = MIXUP()
                 generator, step = mixup.flow(data=inputs['input_ids'], labels=inputs['labels'])
@@ -1674,19 +1670,15 @@ class ClassificationModel:
                 input_ids = input_ids.long().to('cuda')
                 labels = labels.long().to('cuda')
 
-                # logger.critical('After')
-                # logger.critical(f'{input_ids.type()} {input_ids.size()}')
-                # logger.critical(f'{labels.type()} {labels.size()}')
-                # logger.critical(f'{inputs["attention_mask"].type()} {inputs["attention_mask"].size()}')
-
                 attn_mask = inputs["attention_mask"]
 
                 inputs = {"input_ids": input_ids, "attention_mask": torch.cat((attn_mask, attn_mask), axis=0), "labels": labels}
 
         else:
             batch = tuple(t.to(self.device) for t in batch)
+            attn_mask = batch[1]
 
-            if self.use_mixup:
+            if use_mixup:
                 # logger.critical('using mixup')
                 input_ids = batch[0]
                 mixup = MIXUP()
@@ -1696,15 +1688,10 @@ class ClassificationModel:
                 input_ids = input_ids.long().to('cuda')
                 labels = labels.long().to('cuda')
 
-                logger.critical('After')
-                logger.critical(f'{input_ids.type()} {input_ids.size()}')
-                logger.critical(f'{labels.type()} {labels.size()}')
-                logger.critical(f'{batch[1].type()} {batch[1].size()}')
-
-                inputs = {"input_ids": input_ids, "attention_mask": batch[1], "labels": labels}
+                inputs = {"input_ids": input_ids, "attention_mask": torch.cat((attn_mask, attn_mask), axis=0), "labels": labels}
             else:
-                # logger.critical('not using mixup')
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+                logger.info('not using mixup')
+                inputs = {"input_ids": batch[0], "attention_mask": torch.cat((attn_mask, attn_mask), axis=0), "labels": batch[3]}
 
             # XLM, DistilBERT and RoBERTa don't use segment_ids
             if self.args.model_type != "distilbert":

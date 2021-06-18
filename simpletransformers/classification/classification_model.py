@@ -145,7 +145,7 @@ try:
 except ImportError:
     wandb_available = False
 
-logging.basicConfig()
+
 logger = logging.getLogger(__name__)
 
 

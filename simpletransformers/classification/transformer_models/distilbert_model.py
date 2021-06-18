@@ -6,10 +6,6 @@ from transformers.models.distilbert.modeling_distilbert import (
     DistilBertModel,
     DistilBertPreTrainedModel,
 )
-import logging
-
-logging.basicConfig()
-logger = logging.getLogger(__name__)
 
 
 class DistilBertForSequenceClassification(DistilBertPreTrainedModel):

@@ -236,7 +236,8 @@ class LanguageModelingModel:
                 self.generator_config = ElectraConfig.from_pretrained(generator_name)
             elif self.args.model_name:
                 self.generator_config = ElectraConfig.from_pretrained(
-                    os.path.join(self.args.model_name, "generator_config"), **kwargs,
+                    os.path.join(self.args.model_name, "generator_config"),
+                    **kwargs,
                 )
             else:
                 self.generator_config = ElectraConfig(

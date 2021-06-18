@@ -1,10 +1,11 @@
-
-
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from ..custom_loss import CustomLoss
 from ..focal_loss import focal_loss
-from transformers.models.distilbert.modeling_distilbert import DistilBertModel, DistilBertPreTrainedModel
+from transformers.models.distilbert.modeling_distilbert import (
+    DistilBertModel,
+    DistilBertPreTrainedModel,
+)
 
 
 class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
@@ -46,12 +47,22 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
         self.dropout = nn.Dropout(config.seq_classif_dropout)
 
         self.init_weights()
-        
 
     def forward(
-        self, input_ids=None, attention_mask=None, head_mask=None, inputs_embeds=None, labels=None, class_weights=None, processed_df=None, base_lang=None, loss='ce_loss'
+        self,
+        input_ids=None,
+        attention_mask=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        class_weights=None,
+        processed_df=None,
+        base_lang=None,
+        loss="ce_loss",
     ):
-        distilbert_output = self.distilbert(input_ids=input_ids, attention_mask=attention_mask, head_mask=head_mask)
+        distilbert_output = self.distilbert(
+            input_ids=input_ids, attention_mask=attention_mask, head_mask=head_mask
+        )
         hidden_state = distilbert_output[0]  # (bs, seq_len, dim)
         pooled_output = hidden_state[:, 0]  # (bs, dim)
         pooled_output = self.pre_classifier(pooled_output)  # (bs, dim)
@@ -69,17 +80,22 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
                     weight = self.weight.to(labels.device)
                 else:
                     weight = None
-                
-                if loss == 'ce_loss':
+
+                if loss == "ce_loss":
                     loss_fct = CrossEntropyLoss(weight=weight)
                     loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-                elif loss == 'focal_loss':
+                elif loss == "focal_loss":
                     loss_fct = focal_loss(device=labels.device)
                     loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-                elif loss == 'cmi_loss':
+                elif loss == "cmi_loss":
                     self.custom_loss = CustomLoss()
-                    loss = self.custom_loss(logits.view(-1, self.num_labels), labels.view(-1), processed_df, base_lang)
-                
+                    loss = self.custom_loss(
+                        logits.view(-1, self.num_labels),
+                        labels.view(-1),
+                        processed_df,
+                        base_lang,
+                    )
+
             outputs = (loss,) + outputs
 
         return outputs  # (loss), logits, (hidden_states), (attentions)

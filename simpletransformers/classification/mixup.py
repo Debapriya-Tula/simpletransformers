@@ -23,25 +23,37 @@ class MIXUP:
     def validate(**kwargs):
         """Validate input data"""
 
-        if 'data' in kwargs:
-            if isinstance(kwargs['data'], list):
-                kwargs['data'] = np.array(kwargs['data'])
-            if not isinstance(kwargs['data'], torch.Tensor):
-                raise TypeError("data must be numpy array or torch tensor. Found " + str(type(kwargs['data'])))
-        if 'labels' in kwargs:
-            if isinstance(kwargs['labels'], (list, type(None))):
-                kwargs['labels'] = np.array(kwargs['labels'])
-            if not isinstance(kwargs['labels'], torch.Tensor):
-                raise TypeError("labels must be numpy array. Found " + str(type(kwargs['labels'])))
-        if 'batch_size' in kwargs:
-            if not isinstance(kwargs['batch_size'], int):
-                raise TypeError("batch_size must be a valid integer. Found " + str(type(kwargs['batch_size'])))
-        if 'shuffle' in kwargs:
-            if not isinstance(kwargs['shuffle'], bool):
-                raise TypeError("shuffle must be a boolean. Found " + str(type(kwargs['shuffle'])))
-        if 'runs' in kwargs:
-            if not isinstance(kwargs['runs'], int):
-                raise TypeError("runs must be a valid integer. Found " + str(type(kwargs['runs'])))
+        if "data" in kwargs:
+            if isinstance(kwargs["data"], list):
+                kwargs["data"] = np.array(kwargs["data"])
+            if not isinstance(kwargs["data"], torch.Tensor):
+                raise TypeError(
+                    "data must be numpy array or torch tensor. Found "
+                    + str(type(kwargs["data"]))
+                )
+        if "labels" in kwargs:
+            if isinstance(kwargs["labels"], (list, type(None))):
+                kwargs["labels"] = np.array(kwargs["labels"])
+            if not isinstance(kwargs["labels"], torch.Tensor):
+                raise TypeError(
+                    "labels must be numpy array. Found " + str(type(kwargs["labels"]))
+                )
+        if "batch_size" in kwargs:
+            if not isinstance(kwargs["batch_size"], int):
+                raise TypeError(
+                    "batch_size must be a valid integer. Found "
+                    + str(type(kwargs["batch_size"]))
+                )
+        if "shuffle" in kwargs:
+            if not isinstance(kwargs["shuffle"], bool):
+                raise TypeError(
+                    "shuffle must be a boolean. Found " + str(type(kwargs["shuffle"]))
+                )
+        if "runs" in kwargs:
+            if not isinstance(kwargs["runs"], int):
+                raise TypeError(
+                    "runs must be a valid integer. Found " + str(type(kwargs["runs"]))
+                )
 
     def __init__(self, random_state=1, runs=1):
         self.random_state = random_state
@@ -92,7 +104,9 @@ class MIXUP:
         :rtype:   array or tuple
         :return:  array or tuple of arrays (X_data array, labels array)."""
 
-        self.validate(data=data, labels=labels, batch_size=batch_size, shuffle=shuffle, runs=runs)
+        self.validate(
+            data=data, labels=labels, batch_size=batch_size, shuffle=shuffle, runs=runs
+        )
 
         self.runs = runs
 
@@ -114,12 +128,12 @@ class MIXUP:
                 for batch_num in range(num_batches_per_epoch):
                     start_index = batch_num * batch_size
                     end_index = min((batch_num + 1) * batch_size, data_size)
-                    X = shuffled_data[start_index: end_index]
+                    X = shuffled_data[start_index:end_index]
                     if labels is None:
                         X = self.mixup_data(X, y=None)
                         yield X
                     else:
-                        y = shuffled_labels[start_index: end_index]
+                        y = shuffled_labels[start_index:end_index]
                         X, y = self.mixup_data(X, y)
                         yield X, y
 

@@ -148,7 +148,8 @@ class ClassificationModel:
         use_cuda=True,
         cuda_device=-1,
         onnx_execution_provider=None,
-        use_mixup=True,
+        use_mixup=False,
+        loss_type='ce_loss'
         **kwargs,
     ):
 
@@ -356,9 +357,9 @@ class ClassificationModel:
             warnings.warn("wandb_project specified but wandb is not available. Wandb disabled.")
             self.args.wandb_project = None
 
-        self.use_mixup = False
-        if use_mixup is True:
-            self.use_mixup = True
+        self.use_mixup = True if use_mixup else False
+        self.loss_type = loss_type
+
 
     def train_model(
         self,
@@ -1705,7 +1706,8 @@ class ClassificationModel:
         inputs = {
             **inputs,
             "processed_df": processed_df,
-            "base_lang": base_lang
+            "base_lang": base_lang,
+            "loss": self.loss_type
         }
 
         return inputs

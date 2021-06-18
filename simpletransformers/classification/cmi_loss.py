@@ -45,9 +45,9 @@ def calculate_cmi(input_df, lang):
     return cmi_mean
 
 
-class CustomLoss(nn.Module):
+class CMILoss(nn.Module):
     def __init__(self, alpha=1.7, gamma=0.25):
-        super(CustomLoss, self).__init__()
+        super(CMILoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
 

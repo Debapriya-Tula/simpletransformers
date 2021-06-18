@@ -184,7 +184,8 @@ class ClassificationModel:
         cuda_device=-1,
         onnx_execution_provider=None,
         use_mixup=False,
-        loss_type="ce_loss" ** kwargs,
+        loss_type="ce_loss",
+        **kwargs,
     ):
 
         """
@@ -480,8 +481,8 @@ class ClassificationModel:
             )
             self.args.wandb_project = None
 
-        self.use_mixup = True if use_mixup else False
-        self.loss_type = loss_type
+        self.use_mixup = True if self.args.use_mixup else False
+        self.loss_type = self.args.loss_type
 
     def train_model(
         self,

@@ -1,11 +1,15 @@
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
-from ..custom_loss import CustomLoss
+from ..cmi_loss import CMILoss
 from ..focal_loss import focal_loss
 from transformers.models.distilbert.modeling_distilbert import (
     DistilBertModel,
     DistilBertPreTrainedModel,
 )
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger(__name__)
 
 
 class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
@@ -88,8 +92,8 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
                     loss_fct = focal_loss(device=labels.device)
                     loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
                 elif loss == "cmi_loss":
-                    self.custom_loss = CustomLoss()
-                    loss = self.custom_loss(
+                    cmi_loss = CMILoss()
+                    loss = cmi_loss(
                         logits.view(-1, self.num_labels),
                         labels.view(-1),
                         processed_df,

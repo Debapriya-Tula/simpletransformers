@@ -2,6 +2,7 @@ import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from ..cmi_loss import CMILoss
 from ..focal_loss import focal_loss
+from ..cosnorm import CosNorm_Classifier
 from transformers.models.distilbert.modeling_distilbert import (
     DistilBertModel,
     DistilBertPreTrainedModel,
@@ -43,7 +44,9 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
 
         self.distilbert = DistilBertModel(config)
         self.pre_classifier = nn.Linear(config.dim, config.dim)
-        self.classifier = nn.Linear(config.dim, config.num_labels)
+
+        self.classifier1 = nn.Linear(config.dim, config.num_labels)
+        self.classifier2 = CosNorm_Classifier(config.dim, config.num_labels)       
         self.dropout = nn.Dropout(config.seq_classif_dropout)
 
         self.init_weights()
@@ -59,6 +62,7 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
         processed_df=None,
         base_lang=None,
         loss="ce_loss",
+        use_cosnorm=False
     ):
         distilbert_output = self.distilbert(
             input_ids=input_ids, attention_mask=attention_mask, head_mask=head_mask
@@ -68,7 +72,11 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
         pooled_output = self.pre_classifier(pooled_output)  # (bs, dim)
         pooled_output = nn.ReLU()(pooled_output)  # (bs, dim)
         pooled_output = self.dropout(pooled_output)  # (bs, dim)
-        logits = self.classifier(pooled_output)  # (bs, dim)
+
+        if not use_cosnorm:
+            logits = self.classifier1(pooled_output)  # (bs, dim)
+        else:
+            logits = self.classifier2(pooled_output)  # (bs, dim)
 
         outputs = (logits,) + distilbert_output[1:]
         if labels is not None:

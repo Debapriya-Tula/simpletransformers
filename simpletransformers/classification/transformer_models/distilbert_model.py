@@ -3,6 +3,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from ..cmi_loss import CMILoss
 from ..focal_loss import focal_loss
 from ..cosnorm import CosNorm_Classifier
+from ..mixup import MIXUP
 from transformers.models.distilbert.modeling_distilbert import (
     DistilBertModel,
     DistilBertPreTrainedModel,
@@ -46,7 +47,7 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
         self.pre_classifier = nn.Linear(config.dim, config.dim)
 
         self.classifier1 = nn.Linear(config.dim, config.num_labels)
-        self.classifier2 = CosNorm_Classifier(config.dim, config.num_labels)       
+        self.classifier2 = CosNorm_Classifier(config.dim, config.num_labels)
         self.dropout = nn.Dropout(config.seq_classif_dropout)
 
         self.init_weights()
@@ -62,7 +63,8 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
         processed_df=None,
         base_lang=None,
         loss="ce_loss",
-        use_cosnorm=False
+        use_cosnorm=False,
+        use_mixup=False,
     ):
         distilbert_output = self.distilbert(
             input_ids=input_ids, attention_mask=attention_mask, head_mask=head_mask
@@ -85,24 +87,60 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
                 loss = loss_fct(logits.view(-1), labels.view(-1))
             else:
                 if self.weight is not None:
-                    weight = self.weight.to(labels.device)
+                    weight = self.weight.to(input_ids.device)
                 else:
                     weight = None
 
                 if loss == "ce_loss":
                     loss_fct = CrossEntropyLoss(weight=weight)
-                    loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                    if use_mixup is True:
+                        [targets_a, targets_b, lam_vector] = labels
+                        loss = MIXUP.mixup_criterion(
+                            loss_fct,
+                            logits.view(-1, self.num_labels),
+                            targets_a,
+                            targets_b,
+                            lam_vector,
+                        )
+                    else:
+                        loss = loss_fct(
+                            logits.view(-1, self.num_labels), labels.view(-1)
+                        )
                 elif loss == "focal_loss":
                     loss_fct = focal_loss(device=labels.device)
-                    loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                    if use_mixup is True:
+                        [targets_a, targets_b, lam_vector] = labels
+                        loss = MIXUP.mixup_criterion(
+                            loss_fct,
+                            logits.view(-1, self.num_labels),
+                            targets_a,
+                            targets_b,
+                            lam_vector,
+                        )
+                    else:
+                        loss = loss_fct(
+                            logits.view(-1, self.num_labels), labels.view(-1)
+                        )
                 elif loss == "cmi_loss":
                     cmi_loss = CMILoss()
-                    loss = cmi_loss(
-                        logits.view(-1, self.num_labels),
-                        labels.view(-1),
-                        processed_df,
-                        base_lang,
-                    )
+                    if use_mixup is True:
+                        [targets_a, targets_b, lam_vector] = labels
+                        loss = MIXUP.mixup_criterion(
+                            cmi_loss,
+                            logits.view(-1, self.num_labels),
+                            targets_a,
+                            targets_b,
+                            lam_vector,
+                            processed_df,
+                            base_lang,
+                        )
+                    else:
+                        loss = cmi_loss(
+                            logits.view(-1, self.num_labels),
+                            labels.view(-1),
+                            processed_df,
+                            base_lang,
+                        )
 
             outputs = (loss,) + outputs
 

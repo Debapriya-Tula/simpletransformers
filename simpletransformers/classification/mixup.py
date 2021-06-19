@@ -9,6 +9,7 @@
 import numpy as np
 import random
 import torch
+from .cmi_loss import CMILoss
 
 
 class MIXUP:
@@ -80,19 +81,33 @@ class MIXUP:
         y = y.cpu()
         if self.runs is None:
             self.runs = 1
-        output_x = [x]
-        output_y = [y]
+        output_x = []
+        output_y = []
         batch_size = x.shape[0]
-        for i in range(self.runs):
-            lam_vector = np.random.beta(alpha, alpha, batch_size)
-            index = np.random.permutation(batch_size)
-            mixed_x = (x.T * lam_vector).T + (x[index, :].T * (1.0 - lam_vector)).T
-            output_x.append(mixed_x)
-            if y is None:
-                return torch.cat(output_x, axis=0)
-            mixed_y = (y.T * lam_vector).T + (y[index].T * (1.0 - lam_vector)).T
-            output_y.append(mixed_y)
-        return torch.cat(output_x, axis=0), torch.cat(output_y, axis=0)
+
+        lam_vector = np.random.beta(alpha, alpha, batch_size)
+        index = np.random.permutation(batch_size)
+        mixed_x = (x.T * lam_vector).T + (x[index, :].T * (1.0 - lam_vector)).T
+        output_x.append(mixed_x)
+        if y is None:
+            return torch.cat(output_x, axis=0)
+        # mixed_y = (y.T * lam_vector).T + (y[index].T * (1.0 - lam_vector)).T
+        # output_y.append(mixed_y)
+        # return torch.cat(output_x, axis=0), torch.cat(output_y, axis=0)
+        y_a, y_b = y, y[index]
+        return torch.cat(output_x, axis=0), [y_a, y_b, torch.from_numpy(lam_vector)]
+
+    @staticmethod
+    def mixup_criterion(
+        criterion, pred, y_a, y_b, lam, processed_df=None, base_lang=None
+    ):
+        if isinstance(criterion, CMILoss):
+            return (
+                lam * criterion(pred, y_a, processed_df, base_lang)
+                + (1 - lam) * criterion(pred, y_b, processed_df, base_lang)
+            ).mean()
+        else:
+            return (lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)).mean()
 
     def flow(self, data, labels=None, batch_size=32, shuffle=True, runs=1):
         """This function implements the batch iterator and specifically calls mixup

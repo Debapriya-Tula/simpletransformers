@@ -486,7 +486,7 @@ class ClassificationModel:
         try:
             self.loss_type = self.args.loss_type
         except:
-            self.loss_type = 'ce_loss'
+            self.loss_type = "ce_loss"
         try:
             self.use_cosnorm = self.args.cos_norm
         except:
@@ -2229,13 +2229,13 @@ class ClassificationModel:
 
                 input_ids, labels = next(generator)
                 input_ids = input_ids.long().to("cuda")
-                labels = labels.long().to("cuda")
+                labels = [label.long().to("cuda") for label in labels]
 
                 attn_mask = inputs["attention_mask"]
 
                 inputs = {
                     "input_ids": input_ids,
-                    "attention_mask": torch.cat((attn_mask, attn_mask), axis=0),
+                    "attention_mask": attn_mask,
                     "labels": labels,
                 }
 
@@ -2251,11 +2251,11 @@ class ClassificationModel:
 
                 input_ids, labels = next(generator)
                 input_ids = input_ids.long().to("cuda")
-                labels = labels.long().to("cuda")
+                labels = [label.long().to("cuda") for label in labels]
 
                 inputs = {
                     "input_ids": input_ids,
-                    "attention_mask": torch.cat((attn_mask, attn_mask), axis=0),
+                    "attention_mask": attn_mask,
                     "labels": labels,
                 }
             else:
@@ -2282,7 +2282,8 @@ class ClassificationModel:
             "processed_df": processed_df,
             "base_lang": base_lang,
             "loss": self.loss_type,
-            "use_cosnorm": self.use_cosnorm
+            "use_cosnorm": self.use_cosnorm,
+            "use_mixup": use_mixup,
         }
 
         return inputs

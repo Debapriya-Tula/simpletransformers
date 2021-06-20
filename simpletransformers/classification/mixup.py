@@ -65,7 +65,7 @@ class MIXUP:
         else:
             raise TypeError("random_state must have type int")
 
-    def mixup_data(self, x, y=None, alpha=0.4):
+    def mixup_data(self, x, y=None, alpha=0.2):
         """This method performs mixup. If runs = 1 it just does 1 mixup with whole batch, any n of runs
         creates many mixup matches.
         :type x: Numpy array

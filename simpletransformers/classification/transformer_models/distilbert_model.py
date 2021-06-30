@@ -122,7 +122,7 @@ class DistilBertForSequenceClassification(DistilBertPreTrainedModel):
                             logits.view(-1, self.num_labels), labels.view(-1)
                         )
                 elif loss == "cmi_loss":
-                    cmi_loss = CMILoss()
+                    cmi_loss = CMILoss(weight=weight)
                     if use_mixup is True:
                         [targets_a, targets_b, lam_vector] = labels
                         loss = MIXUP.mixup_criterion(

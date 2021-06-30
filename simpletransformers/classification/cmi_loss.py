@@ -46,10 +46,11 @@ def calculate_cmi(input_df, lang):
 
 
 class CMILoss(nn.Module):
-    def __init__(self, alpha=1.7, gamma=0.25):
+    def __init__(self, weight=None, alpha=1.7, gamma=0.25):
         super(CMILoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
+        self.weight = weight
 
     def forward(self, input, target, processed_input_df, base_lang):
         cmi_list = list(
@@ -60,7 +61,7 @@ class CMILoss(nn.Module):
         # LW=α∗CE∗(1−β)γ+α∗CE∗βγ
         # CMI instead of β
         term1 = (
-            self.alpha * F.cross_entropy(input, target) * (1 - cmi_mean) ** self.gamma
+            self.alpha * F.cross_entropy(input, target, self.weight) * (1 - cmi_mean) ** self.gamma
         )
-        term2 = self.alpha * F.cross_entropy(input, target) * cmi_mean ** self.gamma
+        term2 = self.alpha * F.cross_entropy(input, target, self.weight) * cmi_mean ** self.gamma
         return term1 + term2

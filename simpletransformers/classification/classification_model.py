@@ -58,12 +58,16 @@ from transformers import (
     DebertaConfig,
     DebertaForSequenceClassification,
     DebertaTokenizer,
+    DebertaV2Config,
+    DebertaV2ForSequenceClassification,
+    DebertaV2Tokenizer,
     DistilBertConfig,
     DistilBertTokenizerFast,
     ElectraConfig,
     ElectraTokenizerFast,
     FlaubertConfig,
     FlaubertTokenizer,
+    HerbertTokenizerFast,
     LayoutLMConfig,
     LayoutLMTokenizerFast,
     LongformerConfig,
@@ -223,6 +227,11 @@ class ClassificationModel:
                 DebertaForSequenceClassification,
                 DebertaTokenizer,
             ),
+            "debertav2": (
+                DebertaV2Config,
+                DebertaV2ForSequenceClassification,
+                DebertaV2Tokenizer,
+            ),
             "distilbert": (
                 DistilBertConfig,
                 DistilBertForSequenceClassification,
@@ -237,6 +246,11 @@ class ClassificationModel:
                 FlaubertConfig,
                 FlaubertForSequenceClassification,
                 FlaubertTokenizer,
+            ),
+            "herbert": (
+                BertConfig,
+                BertForSequenceClassification,
+                HerbertTokenizerFast,
             ),
             "layoutlm": (
                 LayoutLMConfig,
@@ -873,6 +887,7 @@ class ClassificationModel:
                     config={**asdict(args)},
                     **args.wandb_kwargs,
                 )
+                wandb.run._label(repo="simpletransformers")
             wandb.watch(self.model)
 
         if self.args.fp16:
@@ -1002,9 +1017,12 @@ class ClassificationModel:
                             **kwargs,
                         )
                         for key, value in results.items():
-                            tb_writer.add_scalar(
-                                "eval_{}".format(key), value, global_step
-                            )
+                            try:
+                                tb_writer.add_scalar(
+                                    "eval_{}".format(key), value, global_step
+                                )
+                            except (NotImplementedError, AssertionError):
+                                pass
 
                         output_dir_current = os.path.join(
                             output_dir, "checkpoint-{}".format(global_step)
@@ -1569,6 +1587,7 @@ class ClassificationModel:
                     config={**asdict(args)},
                     **args.wandb_kwargs,
                 )
+                wandb.run._label(repo="simpletransformers")
             if not args.labels_map:
                 self.args.labels_map = {i: i for i in range(self.num_labels)}
 

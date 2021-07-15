@@ -61,6 +61,7 @@ from transformers import (
     ElectraConfig,
     ElectraForTokenClassification,
     ElectraTokenizer,
+    HerbertTokenizerFast,
     LayoutLMConfig,
     LayoutLMForTokenClassification,
     LayoutLMTokenizer,
@@ -109,6 +110,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+MODELS_WITHOUT_CLASS_WEIGHTS_SUPPORT = ["squeezebert", "deberta", "mpnet"]
+
 MODELS_WITH_EXTRA_SEP_TOKEN = [
     "roberta",
     "camembert",
@@ -124,6 +127,7 @@ class NERModel:
         model_type,
         model_name,
         labels=None,
+        weight=None,
         args=None,
         use_cuda=True,
         cuda_device=-1,
@@ -170,6 +174,7 @@ class NERModel:
                 DistilBertTokenizer,
             ),
             "electra": (ElectraConfig, ElectraForTokenClassification, ElectraTokenizer),
+            "herbert": (BertConfig, BertForTokenClassification, HerbertTokenizerFast),
             "layoutlm": (
                 LayoutLMConfig,
                 LayoutLMForTokenClassification,
@@ -261,6 +266,13 @@ class NERModel:
             self.config = config_class.from_pretrained(model_name, **self.args.config)
             self.num_labels = self.config.num_labels
 
+        if model_type in MODELS_WITHOUT_CLASS_WEIGHTS_SUPPORT and weight is not None:
+            raise ValueError(
+                "{} does not currently support class weights".format(model_type)
+            )
+        else:
+            self.weight = weight
+
         if use_cuda:
             if torch.cuda.is_available():
                 if cuda_device == -1:
@@ -275,12 +287,19 @@ class NERModel:
         else:
             self.device = "cpu"
 
+        if self.weight:
+            self.loss_fct = CrossEntropyLoss(
+                weight=torch.Tensor(self.weight).to(self.device)
+            )
+        else:
+            self.loss_fct = None
+
         if self.args.onnx:
             from onnxruntime import InferenceSession, SessionOptions
 
             if not onnx_execution_provider:
                 onnx_execution_provider = (
-                    "CUDAExecutionProvider" if use_cuda else "CPUExecutionProvider"
+                    ["CUDAExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]
                 )
 
             options = SessionOptions()
@@ -288,12 +307,12 @@ class NERModel:
             if self.args.dynamic_quantize:
                 model_path = quantize(Path(os.path.join(model_name, "onnx_model.onnx")))
                 self.model = InferenceSession(
-                    model_path.as_posix(), options, providers=[onnx_execution_provider]
+                    model_path.as_posix(), options, providers=onnx_execution_provider
                 )
             else:
                 model_path = os.path.join(model_name, "onnx_model.onnx")
                 self.model = InferenceSession(
-                    model_path, options, providers=[onnx_execution_provider]
+                    model_path, options, providers=onnx_execution_provider
                 )
         else:
             if not self.args.quantized_model:
@@ -452,6 +471,27 @@ class NERModel:
         )
 
         return global_step, training_details
+
+    def _calculate_loss(self, model, inputs):
+        outputs = model(**inputs)
+        # model outputs are always tuple in pytorch-transformers (see doc)
+        loss = outputs[0]
+        if self.loss_fct:
+            logits = outputs[1]
+            labels = inputs["labels"]
+            attention_mask = inputs.get("attention_mask")
+            if attention_mask is not None:
+                active_loss = attention_mask.view(-1) == 1
+                active_logits = logits.view(-1, self.num_labels)
+                active_labels = torch.where(
+                    active_loss,
+                    labels.view(-1),
+                    torch.tensor(self.loss_fct.ignore_index).type_as(labels),
+                )
+                loss = self.loss_fct(active_logits, active_labels)
+            else:
+                loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+        return (loss, *outputs[1:])
 
     def train(
         self,
@@ -668,9 +708,10 @@ class NERModel:
         if args.wandb_project:
             wandb.init(
                 project=args.wandb_project,
-                config={**asdict(args), "repo": "simpletransformers"},
+                config={**asdict(args)},
                 **args.wandb_kwargs,
             )
+            wandb.run._label(repo="simpletransformers")
             wandb.watch(self.model)
 
         if self.args.fp16:
@@ -701,13 +742,9 @@ class NERModel:
 
                 if self.args.fp16:
                     with amp.autocast():
-                        outputs = model(**inputs)
-                        # model outputs are always tuple in pytorch-transformers (see doc)
-                        loss = outputs[0]
+                        loss, *_ = self._calculate_loss(model, inputs)
                 else:
-                    outputs = model(**inputs)
-                    # model outputs are always tuple in pytorch-transformers (see doc)
-                    loss = outputs[0]
+                    loss, *_ = self._calculate_loss(model, inputs)
 
                 if args.n_gpu > 1:
                     loss = (
@@ -797,9 +834,12 @@ class NERModel:
                             **kwargs,
                         )
                         for key, value in results.items():
-                            tb_writer.add_scalar(
-                                "eval_{}".format(key), value, global_step
-                            )
+                            try:
+                                tb_writer.add_scalar(
+                                    "eval_{}".format(key), value, global_step
+                                )
+                            except (NotImplementedError, AssertionError):
+                                pass
 
                         if args.save_eval_checkpoints:
                             self.save_model(
@@ -1165,10 +1205,10 @@ class NERModel:
 
                 if self.args.fp16:
                     with amp.autocast():
-                        outputs = model(**inputs)
+                        outputs = self._calculate_loss(model, inputs)
                         tmp_eval_loss, logits = outputs[:2]
                 else:
-                    outputs = model(**inputs)
+                    outputs = self._calculate_loss(model, inputs)
                     tmp_eval_loss, logits = outputs[:2]
 
                 if self.args.n_gpu > 1:
@@ -1252,9 +1292,10 @@ class NERModel:
         if self.args.wandb_project and wandb_log:
             wandb.init(
                 project=args.wandb_project,
-                config={**asdict(args), "repo": "simpletransformers"},
+                config={**asdict(args)},
                 **args.wandb_kwargs,
             )
+            labels_list = sorted(self.args.labels_list)
 
             labels_list = sorted(self.args.labels_list)
 
@@ -1449,10 +1490,10 @@ class NERModel:
 
                     if self.args.fp16:
                         with amp.autocast():
-                            outputs = model(**inputs)
+                            outputs = self._calculate_loss(model, inputs)
                             tmp_eval_loss, logits = outputs[:2]
                     else:
-                        outputs = model(**inputs)
+                        outputs = self._calculate_loss(model, inputs)
                         tmp_eval_loss, logits = outputs[:2]
 
                     if self.args.n_gpu > 1:
